@@ -1,0 +1,78 @@
+---
+title: "Homework 5"
+author: "Mari Sanders"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(faraway)
+library(corrplot)
+library(leaps)
+```
+
+a) 
+
+```{r}
+
+state_data <- 
+  state.x77 %>% as_tibble() %>% janitor::clean_names()
+state_data %>% summary()
+state_data %>% 
+  summarize(population_sd = sd(population, na.rm = TRUE),
+            income_sd = sd(income, na.rm = TRUE),
+            illiteracy_sd = sd(illiteracy, na.rm = TRUE),
+            lifeexpec_sd = sd(life_exp, na.rm = TRUE),
+            murder_sd = sd(murder, na.rm = TRUE),
+            hsgrad_sd = sd(hs_grad, na.rm = TRUE),
+            frost_sd = sd(frost, na.rm = TRUE),
+            area_sd = sd(area, na.rm = TRUE))
+```
+
+b) 
+
+```{r}
+pairs(state_data)
+corrplot(cor(state_data), type = "upper", diag = FALSE)
+
+```
+
+```{r}
+par(nfrow = c(2,3))
+boxplot(state_data$population, main = "Population") 
+boxplot(state_data$income, main = "Income")
+boxplot(state_data$illiteracy, main = "Illiteracy")
+boxplot(state_data$life_exp, main = "Life Expectancy")
+boxplot(state_data$murder, main = "Murder")
+boxplot(state_data$hs_grad, main = "High School Grad")
+boxplot(state_data$frost, main = "Frost")
+boxplot(state_data$area, main = "area")
+```
+
+Life expectancy, and murder seem to have a relationship, as well as life expectancy and high school grad and life expectancy and illiteracy. There seems to be a slight relationship between life expectancy and frost. It seems like Illiteracy, population, and area
+are skewed. 
+
+c) 
+
+```{r}
+full_model <- lm(life_exp ~ ., data = state_data)
+summary(full_model)
+
+b = regsubsets(life_exp ~., data = state_data)
+rs = summary(b)
+
+plot(2:8, rs$cp, xlab = "No. of Parameters", ylab = "CP Statistic")
+plot(2:8, rs$adjr2, xlab = "No. of Parameters", ylab = "Adj R2")
+```
+
+Using subsetting, the best model seems to be one that contains population, income, murder, hs_grad, and frost. 
+`life_exp` = `population`$\beta_1$ + `income` $\beta_2$ + `murder` $\beta_3$ + `hs_grad` $\beta_4$ + `frost` $\beta_5$
+
+d)
+
+```{r}
+
+```
+
