@@ -2,7 +2,9 @@
 title: "Homework 5"
 author: "Mari Sanders"
 date: "`r Sys.Date()`"
-output: pdf_document
+output:
+  html_document:
+    df_print: paged
 ---
 
 ```{r setup, include=FALSE}
@@ -11,6 +13,9 @@ library(tidyverse)
 library(faraway)
 library(corrplot)
 library(leaps)
+library(glmnet)
+library(patchwork)
+set.seed(1)
 ```
 
 a) 
@@ -19,7 +24,7 @@ a)
 
 state_data <- 
   state.x77 %>% as_tibble() %>% janitor::clean_names()
-state_data %>% summary()
+state_data %>% summary() %>% knitr::kable()
 state_data %>% 
   summarize(population_sd = sd(population, na.rm = TRUE),
             income_sd = sd(income, na.rm = TRUE),
@@ -28,27 +33,51 @@ state_data %>%
             murder_sd = sd(murder, na.rm = TRUE),
             hsgrad_sd = sd(hs_grad, na.rm = TRUE),
             frost_sd = sd(frost, na.rm = TRUE),
-            area_sd = sd(area, na.rm = TRUE))
+            area_sd = sd(area, na.rm = TRUE)) %>% knitr::kable()
 ```
 
 b) 
 
 ```{r}
-pairs(state_data)
-corrplot(cor(state_data), type = "upper", diag = FALSE)
+pop <- ggplot(state_data, aes(x = log(population))) + geom_histogram()
 
+income <- ggplot(state_data, aes(x = income)) + geom_histogram()
+
+ggplot(state_data, aes(x = 1/(log(illiteracy) + 1))) + geom_histogram()
+
+ggplot(state_data, aes(x = life_exp)) + geom_histogram()
+ 
+ggplot(state_data, aes(x = hs_grad)) + geom_histogram()
+
+ggplot(state_data, aes(x = frost)) + geom_histogram()
+
+ggplot(state_data, aes(x = log(area))) + geom_histogram()
 ```
+
+
+```{r}
+state_data <- 
+  state_data %>% 
+  mutate(population = log(population), 
+         illiteracy = 1/(log(illiteracy) + 1), 
+         area = log(area))
+```
+
 
 ```{r}
 par(nfrow = c(2,3))
-boxplot(state_data$population, main = "Population") 
-boxplot(state_data$income, main = "Income")
-boxplot(state_data$illiteracy, main = "Illiteracy")
-boxplot(state_data$life_exp, main = "Life Expectancy")
-boxplot(state_data$murder, main = "Murder")
-boxplot(state_data$hs_grad, main = "High School Grad")
-boxplot(state_data$frost, main = "Frost")
-boxplot(state_data$area, main = "area")
+
+pop <- ggplot(state_data, aes(y = population)) + geom_boxplot()
+income <- ggplot(state_data, aes(y = income)) + geom_boxplot() 
+illiteracy <- ggplot(state_data, aes(y = illiteracy)) + geom_boxplot()  
+life_exp <- ggplot(state_data, aes(y = life_exp)) + geom_boxplot()
+murder <- ggplot(state_data, aes(y = murder)) + geom_boxplot()  
+grad <- ggplot(state_data, aes(y = hs_grad)) + geom_boxplot()  
+frost <- ggplot(state_data, aes(y = frost)) + geom_boxplot()
+area <- ggplot(state_data, aes(y = area)) + geom_boxplot()
+
+pop + income + illiteracy + life_exp + murder + grad + frost + area 
+               
 ```
 
 Life expectancy, and murder seem to have a relationship, as well as life expectancy and high school grad and life expectancy and illiteracy. There seems to be a slight relationship between life expectancy and frost. It seems like Illiteracy, population, and area
@@ -58,21 +87,67 @@ c)
 
 ```{r}
 full_model <- lm(life_exp ~ ., data = state_data)
+only_1 <- lm(life_exp ~ 1, data = state_data)
 summary(full_model)
 
-b = regsubsets(life_exp ~., data = state_data)
-rs = summary(b)
 
-plot(2:8, rs$cp, xlab = "No. of Parameters", ylab = "CP Statistic")
-plot(2:8, rs$adjr2, xlab = "No. of Parameters", ylab = "Adj R2")
+
+summary(step(only_1, direction = "forward", scope = formula(full_model)))
+
+summary(step(full_model, direction = "backward"))
+
+summary(step(full_model, direction = "both"))
+
+x <- lm(life_exp ~ population + murder + hs_grad, data = state_data)
+
+summary(x)
 ```
+Doing backward, both, and regular subsetting gets the same result to include population, murder, hs_grad, and frost, area. 
+`life_exp` = `population`$\beta_1$ + `murder` $\beta_2$ + `hs_grad` $\beta_3$ + `frost` $\beta_4$ 
 
-Using subsetting, the best model seems to be one that contains population, income, murder, hs_grad, and frost. 
-`life_exp` = `population`$\beta_1$ + `income` $\beta_2$ + `murder` $\beta_3$ + `hs_grad` $\beta_4$ + `frost` $\beta_5$
-
-d)
+The only "close call" variable is `frost`, but the adjusted r-squared value decreased when you take `frost` out, so I chose to keep it in the model. 
 
 ```{r}
+pairs(state_data)
+corrplot(cor(state_data), type = "upper", diag = FALSE)
+```
+
+There is a strong relationship between `illiteracy` and `hs_grad`. Our subset only contains `hs_grad` and not `illiteracy`. 
+
+d) 
+
+```{r}
+data <- state_data %>% select(-life_exp)
+mat <- as.matrix(data)
+leaps(x = mat[,1:7], y = mat[,8], nbest = 2, method = "Cp")
+```
+
+
+```{r}
+subsets = regsubsets(life_exp ~., data = state_data)
+subset_res = summary(subsets)
+
+subset_res
+plot(subset_res$cp, xlab = "No. of Parameters", ylab = "CP Statistic")
+plot(subset_res$adjr2, xlab = "No. of Parameters", ylab = "Adj R2")
+```
+
+
+e) 
+
+```{r}
+lambda_seq <- 10^seq(-3,0, by = 0.1)
+cv_object <- cv.glmnet(as.matrix(state_data[2:8]), state_data$life_exp, lambda = lambda_seq, nfolds = 5)
+
+cv_object
+tibble(lambda = cv_object$lambda, 
+       mean_cv_error = cv_object$cvm) %>% 
+  ggplot(aes(x = lambda, y = mean_cv_error)) + geom_point()
+
+cv_object$lambda.min
+
+fit_bestcv <- glmnet(as.matrix(state_data[2:8]), state_data$life_exp, lambda = cv_object$lambda.min)
+coef(fit_bestcv)
 
 ```
 
